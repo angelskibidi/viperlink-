@@ -1,0 +1,286 @@
+/* ─────────────────────────────────────────────────────────────
+   ViperLink wireframe styles — sketchy paper aesthetic
+   ───────────────────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&family=Caveat:wght@400;700&family=Architects+Daughter&display=swap');
+
+:root {
+  --paper: #f4efe2;
+  --paper-edge: #ebe3cf;
+  --ink: #1a1a1a;
+  --ink-soft: #5b5b5b;
+  --ink-faint: #9b9485;
+  --rule: #2a2a2a;
+  --red: #c2362b;
+  --red-soft: #e8b6b0;
+  --yellow: #fcefb4;
+  --accent: #2f6fb1;
+}
+
+* { box-sizing: border-box; }
+
+.wf {
+  font-family: 'Kalam', 'Architects Daughter', system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  padding: 22px 28px;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.025) 0 1px, transparent 1px 32px),
+    repeating-linear-gradient(90deg, rgba(0,0,0,0.025) 0 1px, transparent 1px 32px);
+}
+
+.wf-narrow { padding: 32px 40px; }
+
+/* Borders look hand-drawn via slight asymmetric radii */
+.wf-box {
+  border: 1.8px solid var(--ink);
+  border-radius: 4px 8px 5px 7px;
+  background: transparent;
+  position: relative;
+}
+.wf-box.wf-soft { border-width: 1.4px; border-color: var(--ink-soft); border-style: solid; }
+.wf-box.wf-dashed { border-style: dashed; border-color: var(--ink-soft); }
+.wf-box.wf-thick { border-width: 2.6px; }
+.wf-box.wf-filled { background: rgba(0,0,0,0.04); }
+.wf-box.wf-yellow { background: var(--yellow); border-color: #b58c00; }
+
+.wf-pad { padding: 12px 14px; }
+.wf-pad-lg { padding: 18px 20px; }
+.wf-pad-sm { padding: 8px 10px; }
+
+/* Diagonal hatching for image / map placeholders */
+.wf-hatch {
+  background:
+    repeating-linear-gradient(45deg,
+      rgba(26,26,26,0.18) 0 1px,
+      transparent 1px 9px);
+}
+.wf-hatch-dense {
+  background:
+    repeating-linear-gradient(45deg,
+      rgba(26,26,26,0.22) 0 1px,
+      transparent 1px 6px);
+}
+
+.wf-x-placeholder {
+  position: relative;
+}
+.wf-x-placeholder::before,
+.wf-x-placeholder::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(to top right, transparent calc(50% - 0.6px), var(--ink-soft) calc(50% - 0.6px) calc(50% + 0.6px), transparent calc(50% + 0.6px));
+  opacity: 0.5;
+}
+.wf-x-placeholder::after {
+  background: linear-gradient(to top left, transparent calc(50% - 0.6px), var(--ink-soft) calc(50% - 0.6px) calc(50% + 0.6px), transparent calc(50% + 0.6px));
+}
+
+/* Typography */
+.wf h1, .wf h2, .wf h3, .wf h4 { margin: 0; font-weight: 700; letter-spacing: -0.005em; }
+.wf h1 { font-size: 30px; line-height: 1.1; }
+.wf h2 { font-size: 22px; line-height: 1.15; }
+.wf h3 { font-size: 17px; line-height: 1.2; }
+.wf h4 { font-size: 14px; line-height: 1.25; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em; }
+.wf p, .wf span, .wf li, .wf label, .wf div { font-size: 15px; line-height: 1.35; }
+
+.wf-mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+.wf-cap { text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; font-weight: 700; color: var(--ink-soft); }
+.wf-muted { color: var(--ink-soft); }
+.wf-faint { color: var(--ink-faint); }
+.wf-bold { font-weight: 700; }
+
+/* Buttons */
+.wf-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1.6px solid var(--ink); padding: 8px 14px;
+  border-radius: 4px 6px 5px 7px;
+  background: transparent; font: inherit; font-weight: 700;
+  cursor: pointer; font-size: 14px;
+  white-space: nowrap;
+}
+.wf-btn-primary { background: var(--ink); color: var(--paper); }
+.wf-btn-danger  { background: var(--red); color: #fff; border-color: var(--red); }
+.wf-btn-ghost   { border-style: dashed; color: var(--ink-soft); }
+.wf-btn-sm      { padding: 5px 9px; font-size: 12px; }
+
+/* Inputs */
+.wf-input {
+  display: flex; align-items: center;
+  border: 1.4px solid var(--ink); border-radius: 4px 6px 5px 7px;
+  padding: 10px 12px;
+  background: transparent;
+  min-height: 38px;
+  color: var(--ink-faint);
+  font-style: italic;
+  font-size: 14px;
+}
+.wf-input.wf-filled { color: var(--ink); font-style: normal; }
+
+/* Status pill */
+.wf-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1.4px solid var(--ink);
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.wf-pill-red { background: var(--red); color: #fff; border-color: var(--red); }
+.wf-pill-ink { background: var(--ink); color: var(--paper); }
+.wf-pill-out { background: transparent; }
+.wf-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink); display: inline-block; }
+.wf-dot-red { background: var(--red); }
+.wf-dot-open { background: transparent; border: 1.4px solid var(--ink); }
+
+/* Sticky-note annotation */
+.wf-note {
+  position: absolute;
+  background: var(--yellow);
+  border: 1.2px solid #b58c00;
+  padding: 7px 10px;
+  font-family: 'Caveat', cursive;
+  font-size: 15px;
+  line-height: 1.15;
+  color: #4a3500;
+  max-width: 200px;
+  transform: rotate(-1.5deg);
+  box-shadow: 1px 2px 0 rgba(0,0,0,0.08);
+  z-index: 5;
+}
+.wf-note.r { transform: rotate(1.5deg); }
+
+/* Annotation arrow (svg-like with a curved hint) */
+.wf-arrow {
+  position: absolute;
+  font-family: 'Caveat', cursive;
+  font-size: 16px;
+  color: var(--ink-soft);
+  z-index: 5;
+}
+
+/* Lines of fake body text */
+.wf-line {
+  height: 8px;
+  background: rgba(26,26,26,0.6);
+  border-radius: 4px;
+  margin: 4px 0;
+}
+.wf-line.wf-line-soft { background: rgba(26,26,26,0.28); height: 7px; }
+.wf-line.wf-line-faint { background: rgba(26,26,26,0.15); height: 6px; }
+
+/* Layout helpers */
+.wf-row { display: flex; gap: 10px; }
+.wf-col { display: flex; flex-direction: column; gap: 10px; }
+.wf-grid { display: grid; gap: 10px; }
+.wf-spacer { flex: 1; }
+.wf-center { display: flex; align-items: center; justify-content: center; }
+.wf-between { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.wf-vsep { width: 1.2px; background: var(--ink-soft); align-self: stretch; opacity: 0.6; }
+.wf-hsep { height: 1.2px; background: var(--ink-soft); opacity: 0.5; }
+
+/* Tabs */
+.wf-tab {
+  padding: 6px 14px;
+  border: 1.4px solid var(--ink);
+  border-bottom: none;
+  border-radius: 5px 6px 0 0;
+  font-weight: 700;
+  font-size: 13px;
+  background: transparent;
+}
+.wf-tab.wf-tab-active { background: var(--ink); color: var(--paper); }
+
+/* Side nav rail — collapsed (56px) by default, expands on hover.
+   Real :hover interaction so users can feel it in the wireframe. */
+.wf-rail {
+  width: 56px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: width 180ms ease;
+  position: relative;
+  border-right: 1.2px dashed var(--ink-soft);
+  padding-right: 6px;
+  overflow: visible;
+}
+.wf-rail:hover { width: 200px; }
+.wf-rail .wf-rail-label {
+  opacity: 0;
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: opacity 120ms ease, max-width 180ms ease;
+}
+.wf-rail:hover .wf-rail-label {
+  opacity: 1;
+  max-width: 200px;
+}
+.wf-rail .wf-rail-spacer { flex: 1; }
+.wf-rail .wf-rail-panic-full {
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 120ms ease, max-height 180ms ease;
+}
+.wf-rail:hover .wf-rail-panic-full {
+  opacity: 1;
+  max-height: 60px;
+}
+.wf-rail .wf-rail-panic-icon { display: flex; justify-content: center; }
+.wf-rail:hover .wf-rail-panic-icon { display: none; }
+.wf-rail .wf-nav-item { padding: 8px 10px; gap: 12px; }
+
+/* Nav rail */
+.wf-nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px;
+  border-radius: 4px 6px 5px 7px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+.wf-nav-item.wf-active {
+  background: var(--ink); color: var(--paper);
+}
+
+/* Sketch icon (small box-with-shape stand-in) */
+.wf-icon {
+  width: 22px; height: 22px;
+  border: 1.4px solid currentColor;
+  border-radius: 3px 5px 4px 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: 'Caveat', cursive;
+  font-size: 14px;
+  flex: none;
+}
+.wf-icon-lg { width: 36px; height: 36px; font-size: 18px; border-radius: 4px 7px 5px 8px; }
+
+/* Big status disc */
+.wf-disc {
+  width: 150px; height: 150px;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700;
+  font-size: 26px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.wf-disc-armed { border-color: var(--ink); }
+.wf-disc-alert { border-color: var(--red); color: var(--red); }
+
+/* Variation label tag (top of artboard, optional internal) */
+.wf-label-tag {
+  position: absolute; top: 10px; right: 12px;
+  font-family: 'Caveat', cursive;
+  font-size: 18px;
+  color: var(--ink-soft);
+  z-index: 5;
+}

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ViperLink · prototype</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,300..600,0..1,-25..200" />
+  <link rel="stylesheet" href="vl-tokens.css" />
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + Babel -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <!-- App modules -->
+  <script type="text/babel" src="vl-shell.jsx"></script>
+  <script type="text/babel" src="vl-auth.jsx"></script>
+  <script type="text/babel" src="vl-setup.jsx"></script>
+  <script type="text/babel" src="vl-dashboard.jsx"></script>
+  <script type="text/babel" src="vl-fleet.jsx"></script>
+  <script type="text/babel" src="vl-security.jsx"></script>
+
+  <script type="text/babel">
+    const { useEffect } = React;
+
+    // Public routes — no sign-in required.
+    const PUBLIC = ['/login', '/signup', '/forgot-password', '/reset-password', '/2fa', '/verify-phone', '/setup/module', '/setup/vehicle'];
+
+    function Router() {
+      const { path } = useRoute();
+      const { state } = useApp();
+      const isPublic = PUBLIC.some((p) => path === p || path.startsWith(p + '/'));
+
+      // Auth guard: protected routes bounce to /login if not signed in.
+      useEffect(() => {
+        if (!state.signedIn && !isPublic) {
+          if (path !== '/login') navigate('/login');
+        }
+      }, [state.signedIn, path, isPublic]);
+
+      if (!state.signedIn && !isPublic) {
+        return null;
+      }
+
+      // Route table
+      if (path === '/login') return <LoginScreen />;
+      if (path === '/signup') return <SignupScreen />;
+      if (path === '/verify-phone') return <VerifyPhoneScreen />;
+      if (path === '/forgot-password') return <ForgotScreen />;
+      if (path === '/reset-password') return <ResetScreen />;
+      if (path === '/2fa') return <TwoFAScreen />;
+      if (path === '/setup/module') return <SetupModuleScreen />;
+      if (path === '/setup/vehicle') return <SetupVehicleScreen />;
+
+      if (path === '/' || path === '/dashboard') return <DashboardScreen />;
+      if (path === '/vehicles') return <VehiclesScreen />;
+      if (path.startsWith('/vehicles/')) return <VehicleDetailScreen />;
+      if (path === '/events') return <EventsScreen />;
+      if (path === '/security') return <SecurityScreen />;
+      if (path === '/security/2fa-enroll') return <TwoFAEnrollScreen />;
+      if (path === '/settings') return <SettingsStub />;
+
+      return <NotFound />;
+    }
+
+    function SettingsStub() {
+      return (
+        <Shell title="Settings">
+          <PageHead eyebrow="Account" title="Settings" lead="Profile, notifications, preferences, and integrations." />
+          <div className="card card-pad-lg" style={{ minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="col gap-2 text-c muted">
+              <span className="ms xl">construction</span>
+              <div className="bold">Settings coming soon</div>
+              <div style={{ fontSize: 13 }}>Profile, notification rules, integrations.</div>
+            </div>
+          </div>
+        </Shell>
+      );
+    }
+
+    function NotFound() {
+      return (
+        <div className="auth" style={{ gridTemplateColumns: '1fr' }}>
+          <div className="auth-form-wrap">
+            <div className="col gap-3 text-c">
+              <div className="h1">404</div>
+              <div className="muted">No such route.</div>
+              <a href="#/" className="btn btn-primary">Back to dashboard</a>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function DemoFooter() {
+      const { state, reset, signOut } = useApp();
+      const { path } = useRoute();
+      return (
+        <div className="demo-footer">
+          <span style={{ color: 'var(--ink-3)' }}>demo</span>
+          <span className="mono" style={{ color: 'var(--ink-2)' }}>#{path}</span>
+          <span style={{ color: 'var(--ink-4)' }}>·</span>
+          <span style={{ color: state.signedIn ? 'var(--good)' : 'var(--ink-3)' }}>
+            {state.signedIn ? `signed in · ${state.user.username}` : 'signed out'}
+          </span>
+          <span style={{ color: 'var(--ink-4)' }}>·</span>
+          {state.signedIn && (
+            <button onClick={() => { signOut(); navigate('/login'); }}>sign out</button>
+          )}
+          <button onClick={reset}>reset demo</button>
+        </div>
+      );
+    }
+
+    function App() {
+      return (
+        <RouterProvider>
+          <StateProvider>
+            <ToastProvider>
+              <Router />
+              <DemoFooter />
+            </ToastProvider>
+          </StateProvider>
+        </RouterProvider>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
