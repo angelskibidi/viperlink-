@@ -28,6 +28,9 @@ export type AppUser = {
   username: string;
   email: string | null;
   name: string;
+  phone: string | null;
+  totp_enabled: boolean;
+  totp_updated_at: string | null;
   role: "admin" | "user";
 };
 

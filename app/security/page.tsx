@@ -1,26 +1,99 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Shell, { PageHead } from "@/app/components/Shell";
 import { useToast } from "@/app/components/Toast";
 import { useApp } from "@/app/context/AppContext";
+import { COMMON_TIMEZONES, formatTs, formatTsShort, timeAgo, getStoredTz, setStoredTz } from "@/lib/time";
 
-const RECOVERY_CODES = ["4F2A-9C04", "V8E1-77RR", "KQ2X-LM93", "0PNB-44XS", "HJ7T-9AB1", "3DZE-WK20", "YN6Q-8VV4", "C5L0-EZ8M", "1RAX-PT0K", "TF92-MN6Y"];
-
-const sessions = [
-  { id: "s1", label: "MacBook Pro · Safari", sub: "just now", icon: "laptop_mac", pill: "this device" },
-  { id: "s2", label: "iPhone 15 · Mobile app", sub: "4m ago", icon: "smartphone", pill: null },
-  { id: "s3", label: "Windows · Chrome", sub: "2 hours ago", icon: "desktop_windows", pill: null },
-  { id: "s4", label: "Unknown · curl 8.4", sub: "16 hours ago", icon: "terminal", pill: "review" },
-];
+type Session = { id: string; label: string; icon: string; created_at: string; last_used_at: string; ip: string | null; current: boolean };
 
 export default function SecurityPage() {
+  const router = useRouter();
   const toast = useToast();
   const { user } = useApp();
-  const [has2FA, setHas2FA] = useState(true);
-  const [showCodes, setShowCodes] = useState(false);
-  const [pw, setPw] = useState({ cur: "", new: "" });
+  const [has2FA, setHas2FA] = useState(user?.totp_enabled ?? false);
+  useEffect(() => { if (user) setHas2FA(user.totp_enabled ?? false); }, [user]);
+  const [tz, setTzState] = useState("");
+  useEffect(() => { setTzState(getStoredTz()); }, []);
+  const handleTzChange = (v: string) => { setStoredTz(v); setTzState(v); };
   const [sendingReset, setSendingReset] = useState(false);
+
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/sessions")
+      .then((r) => r.json())
+      .then((d) => { if (d.sessions) setSessions(d.sessions); })
+      .catch(() => {})
+      .finally(() => setSessionsLoading(false));
+  }, []);
+
+  const revokeSession = async (id: string) => {
+    const s = sessions.find((x) => x.id === id);
+    await fetch(`/api/sessions/${id}`, { method: "DELETE" });
+    setSessions((prev) => prev.filter((x) => x.id !== id));
+    toast({ tone: "good", icon: "check_circle", title: "Session revoked", sub: s?.label });
+  };
+
+  const signOutEverywhere = async () => {
+    await fetch("/api/sessions", { method: "DELETE" });
+    router.push("/login");
+  };
+
+  type LoginEvent = { id: string; created_at: string; res: string; ua: string; ok: boolean };
+  const [loginEvents, setLoginEvents] = useState<LoginEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/login-events")
+      .then((r) => r.json())
+      .then((d) => { if (d.events) setLoginEvents(d.events); })
+      .catch(() => {})
+      .finally(() => setEventsLoading(false));
+  }, []);
+
+  // Password change modal
+  const [pwModal, setPwModal] = useState(false);
+  const [pwStep, setPwStep] = useState<1 | 2>(1);
+  const [curPw, setCurPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwErr, setPwErr] = useState("");
+
+  const openPwModal = () => { setPwModal(true); setPwStep(1); setCurPw(""); setNewPw(""); setConfirmPw(""); setPwErr(""); };
+  const closePwModal = () => { setPwModal(false); setPwStep(1); setCurPw(""); setNewPw(""); setConfirmPw(""); setPwErr(""); };
+
+  const handlePwStep1 = () => {
+    if (!curPw) { setPwErr("Enter your current password."); return; }
+    setPwErr("");
+    setPwStep(2);
+  };
+
+  const handlePwSubmit = async () => {
+    if (!newPw) { setPwErr("Enter a new password."); return; }
+    if (newPw.length < 6) { setPwErr("Password must be at least 6 characters."); return; }
+    if (newPw !== confirmPw) { setPwErr("Passwords don't match."); return; }
+    setPwBusy(true);
+    setPwErr("");
+    const res = await fetch("/api/change-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword: curPw, newPassword: newPw }),
+    });
+    setPwBusy(false);
+    if (res.ok) {
+      closePwModal();
+      toast({ tone: "good", icon: "check_circle", title: "Password updated", sub: "Your password has been changed." });
+    } else {
+      const d = await res.json().catch(() => ({}));
+      setPwErr(d.error ?? "Could not update password.");
+      if (d.error?.toLowerCase().includes("current")) setPwStep(1);
+    }
+  };
 
   const sendResetEmail = async () => {
     if (!user?.email) { toast({ tone: "crit", icon: "error", title: "No email on this account" }); return; }
@@ -61,59 +134,26 @@ export default function SecurityPage() {
                 <div className="cap">Two-factor authentication</div>
                 <div className="h2" style={{ fontSize: 20, marginTop: 4 }}>Authenticator app · TOTP</div>
               </div>
-              <div className={`switch ${has2FA ? "on" : ""}`} onClick={() => {
-                setHas2FA((v) => !v);
-                toast({ tone: has2FA ? "crit" : "good", icon: "verified_user", title: has2FA ? "2FA disabled" : "2FA enabled" });
+              <div className={`switch ${has2FA ? "on" : ""}`} onClick={async () => {
+                if (has2FA) {
+                  await fetch("/api/2fa/disable", { method: "POST" });
+                  setHas2FA(false);
+                  toast({ tone: "crit", icon: "verified_user", title: "2FA disabled" });
+                } else {
+                  router.push("/security/2fa-enroll");
+                }
               }} />
             </div>
             <div className="muted" style={{ fontSize: 13 }}>Codes pulled from your authenticator app (1Password, Authy, Google). Stops a stolen password from unlocking your fleet.</div>
-            <div className="row gap-2" style={{ marginTop: 14, flexWrap: "wrap" }}>
-              <a href="/security/2fa-enroll" className="btn btn-sm btn-outline"><span className="ms sm">qr_code_2</span>reconfigure</a>
-              <button className="btn btn-sm btn-outline" onClick={() => setShowCodes((s) => !s)}>
-                <span className="ms sm">vpn_key</span>{showCodes ? "hide" : "view"} recovery codes
-              </button>
-              <button className="btn btn-sm btn-outline" onClick={() => toast({ tone: "brand", icon: "autorenew", title: "New recovery codes generated", sub: "Old codes are invalidated." })}>
-                <span className="ms sm">autorenew</span>regenerate
-              </button>
-            </div>
-
-            {showCodes && (
-              <div className="card card-pad fade-in" style={{ marginTop: 14, padding: 12, background: "var(--bg-2)" }}>
-                <div className="row between" style={{ marginBottom: 8 }}>
-                  <div className="cap">10 recovery codes · use each once</div>
-                  <button className="btn btn-sm btn-ghost" onClick={async () => {
-                    await navigator.clipboard.writeText(RECOVERY_CODES.join("\n"));
-                    toast({ tone: "good", icon: "content_copy", title: "Codes copied" });
-                  }}><span className="ms sm">content_copy</span>copy all</button>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
-                  {RECOVERY_CODES.map((c, i) => (
-                    <div key={i} className="mono" style={{ padding: "6px 8px", border: "1px solid var(--line)", borderRadius: 4, fontSize: 12, background: "var(--surface)" }}>{c}</div>
-                  ))}
-                </div>
+            {user?.totp_updated_at && (
+              <div className="row gap-2" style={{ marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <span className={`pill ${has2FA ? "good" : "crit"}`}>
+                  <span className="ms sm" style={{ fontSize: 10 }}>{has2FA ? "verified_user" : "no_encryption"}</span>
+                  {has2FA ? "enabled" : "disabled"} {timeAgo(user.totp_updated_at)}
+                </span>
+                <span style={{ fontSize: 12, color: "var(--ink-2)" }}>{formatTs(user.totp_updated_at, tz || undefined)}</span>
               </div>
             )}
-
-            <hr className="hr" style={{ margin: "18px 0" }} />
-            <div className="cap" style={{ marginBottom: 10 }}>Other methods</div>
-            <div className="col gap-2">
-              {[
-                { id: "sms", label: "SMS backup", sub: "Backup method", icon: "sms", on: true },
-                { id: "hw", label: "Hardware key (YubiKey)", sub: "Most resistant to phishing", icon: "usb", on: false },
-                { id: "passkey", label: "Passkey on this device", sub: "Recommended", icon: "fingerprint", on: false },
-              ].map((m) => (
-                <div key={m.id} className="row between" style={{ padding: "10px 0", borderTop: "1px solid var(--line-soft)" }}>
-                  <div className="row gap-3" style={{ alignItems: "center" }}>
-                    <span className="ms" style={{ color: "var(--ink-2)" }}>{m.icon}</span>
-                    <div>
-                      <div className="bold" style={{ fontSize: 14 }}>{m.label}</div>
-                      <div className="muted" style={{ fontSize: 12 }}>{m.sub}</div>
-                    </div>
-                  </div>
-                  {m.on ? <span className="pill good"><span className="dot" />on</span> : <button className="btn btn-sm btn-outline">set up</button>}
-                </div>
-              ))}
-            </div>
           </div>
 
           {/* Password */}
@@ -133,31 +173,81 @@ export default function SecurityPage() {
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div className="field">
-                <label className="field-label">Current</label>
-                <input className="input" type="password" value={pw.cur} onChange={(e) => setPw({ ...pw, cur: e.target.value })} placeholder="••••••••" />
-              </div>
-              <div className="field">
-                <label className="field-label">New</label>
-                <input className="input" type="password" value={pw.new} onChange={(e) => setPw({ ...pw, new: e.target.value })} placeholder="••••••••" />
-              </div>
-            </div>
-            <div className="row gap-2" style={{ marginTop: 14 }}>
-              <button className="btn" onClick={() => {
-                if (!pw.cur || !pw.new) { toast({ tone: "crit", icon: "error", title: "Fill both fields" }); return; }
-                setPw({ cur: "", new: "" });
-                toast({ tone: "good", icon: "check_circle", title: "Password updated", sub: "Other sessions have been signed out." });
-              }}>Update password</button>
+            <div className="row gap-2">
+              <button className="btn" onClick={openPwModal}>
+                <span className="ms sm">lock_reset</span>Change password
+              </button>
               <button className="btn btn-ghost" onClick={sendResetEmail} disabled={sendingReset}>
                 <span className="ms sm">forward_to_inbox</span>
                 {sendingReset ? "Sending…" : "Email me a reset link"}
               </button>
             </div>
           </div>
+
+          {/* Password change modal */}
+          {pwModal && (
+            <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }} onClick={closePwModal} />
+              <div className="card card-pad-lg fade-in" style={{ position: "relative", width: 400, zIndex: 1 }}>
+                <div className="row between" style={{ marginBottom: 20 }}>
+                  <div>
+                    <div className="cap">Change password</div>
+                    <div className="bold" style={{ fontSize: 16, marginTop: 2 }}>
+                      {pwStep === 1 ? "Step 1 of 2 · Verify identity" : "Step 2 of 2 · Set new password"}
+                    </div>
+                  </div>
+                  <button className="btn btn-sm btn-ghost" onClick={closePwModal} style={{ padding: "4px 8px" }}>
+                    <span className="ms">close</span>
+                  </button>
+                </div>
+
+                {pwStep === 1 && (
+                  <div className="col gap-4 fade-in">
+                    <div className="field">
+                      <label className="field-label">Current password</label>
+                      <input className="input" type="password" autoFocus value={curPw} onChange={(e) => setCurPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handlePwStep1()} placeholder="••••••••" />
+                    </div>
+                    {pwErr && <div className="field-error">{pwErr}</div>}
+                    <div className="row gap-2" style={{ justifyContent: "flex-end" }}>
+                      <button className="btn btn-ghost" onClick={closePwModal}>Cancel</button>
+                      <button className="btn btn-primary" onClick={handlePwStep1}>Next <span className="ms sm">arrow_forward</span></button>
+                    </div>
+                  </div>
+                )}
+
+                {pwStep === 2 && (
+                  <div className="col gap-4 fade-in">
+                    <div className="field">
+                      <label className="field-label">New password</label>
+                      <input className="input" type="password" autoFocus value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="••••••••" />
+                    </div>
+                    <div className="field">
+                      <label className="field-label">Confirm new password</label>
+                      <input className="input" type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !pwBusy && handlePwSubmit()} placeholder="••••••••" />
+                    </div>
+                    {pwErr && <div className="field-error">{pwErr}</div>}
+                    <div className="row gap-2" style={{ justifyContent: "flex-end" }}>
+                      <button className="btn btn-ghost" onClick={() => { setPwStep(1); setPwErr(""); }}>← Back</button>
+                      <button className="btn btn-primary" onClick={handlePwSubmit} disabled={pwBusy}>
+                        {pwBusy ? "Updating…" : "Update password"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="col gap-4">
+          {/* Timezone selector */}
+          <div className="field">
+            <label className="field-label">Time zone</label>
+            <select className="select" value={tz} onChange={(e) => handleTzChange(e.target.value)}>
+              {COMMON_TIMEZONES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+
           {/* Sessions */}
           <div className="card card-pad-lg">
             <div className="row between" style={{ marginBottom: 12 }}>
@@ -165,22 +255,31 @@ export default function SecurityPage() {
                 <div className="cap">Active sessions</div>
                 <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>Sign out anywhere you don't recognize.</div>
               </div>
-              <button className="btn btn-sm" style={{ borderColor: "var(--crit)", color: "var(--crit)" }} onClick={() => toast({ tone: "crit", icon: "logout", title: "Signed out everywhere" })}>
+              <button className="btn btn-sm" style={{ borderColor: "var(--crit)", color: "var(--crit)" }} onClick={signOutEverywhere}>
                 <span className="ms sm">logout</span>sign out everywhere
               </button>
             </div>
-            {sessions.map((s, i) => (
+            {sessionsLoading ? (
+              <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>Loading sessions…</div>
+            ) : sessions.length === 0 ? (
+              <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>No active sessions found.</div>
+            ) : sessions.map((s, i) => (
               <div key={s.id} className="row gap-3" style={{ padding: "12px 0", borderTop: i === 0 ? "none" : "1px solid var(--line-soft)", alignItems: "center" }}>
-                <span className="ms" style={{ color: s.pill === "review" ? "var(--crit)" : "var(--ink-2)" }}>{s.icon}</span>
+                <span className="ms" style={{ color: "var(--ink-2)" }}>{s.icon}</span>
                 <div style={{ flex: 1 }}>
                   <div className="bold" style={{ fontSize: 13 }}>{s.label}</div>
-                  <div className="mono muted" style={{ fontSize: 11 }}>{s.sub}</div>
+                  <div className="row gap-2" style={{ marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
+                    <span className="pill purple">
+                      <span className="ms sm" style={{ fontSize: 10 }}>schedule</span>
+                      logged in {timeAgo(s.created_at)}
+                    </span>
+                    <span style={{ fontSize: 12, color: "var(--ink-2)" }}>{formatTs(s.created_at, tz || undefined)}</span>
+                    {s.ip && <span className="mono muted" style={{ fontSize: 11 }}>· {s.ip}</span>}
+                  </div>
                 </div>
-                {s.pill === "this device"
+                {s.current
                   ? <span className="pill good"><span className="dot" />this device</span>
-                  : s.pill === "review"
-                  ? <span className="pill crit live"><span className="dot" />review</span>
-                  : <button className="btn btn-sm btn-ghost" onClick={() => toast({ tone: "good", icon: "check_circle", title: "Session revoked", sub: s.label })}>revoke</button>}
+                  : <button className="btn btn-sm btn-ghost" onClick={() => revokeSession(s.id)}>revoke</button>}
               </div>
             ))}
           </div>
@@ -190,15 +289,18 @@ export default function SecurityPage() {
             <div className="row between" style={{ marginBottom: 12 }}>
               <div className="cap">Recent sign-in activity</div>
             </div>
-            {[
-              { t: "just now", res: "✓ password", ua: "mac · safari", ok: true },
-              { t: "4m ago", res: "✓ password", ua: "iphone · app", ok: true },
-              { t: "yesterday", res: "✗ failed", ua: "unknown · curl", ok: false },
-            ].map((r, i) => (
-              <div key={i} className="row gap-3" style={{ padding: "8px 0", borderTop: i === 0 ? "none" : "1px solid var(--line-soft)", alignItems: "center" }}>
-                <span className="mono" style={{ fontSize: 11, width: 80, color: "var(--ink-2)" }}>{r.t}</span>
-                <span className="mono bold" style={{ fontSize: 12, width: 90, color: r.ok ? "var(--ink)" : "var(--crit)" }}>{r.res}</span>
-                <span className="muted" style={{ fontSize: 13 }}>{r.ua}</span>
+            {eventsLoading ? (
+              <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>Loading…</div>
+            ) : loginEvents.length === 0 ? (
+              <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>No sign-in activity yet.</div>
+            ) : loginEvents.map((r, i) => (
+              <div key={r.id} className="col gap-1" style={{ padding: "10px 0", borderTop: i === 0 ? "none" : "1px solid var(--line-soft)" }}>
+                <div className="row gap-3" style={{ alignItems: "center" }}>
+                  <span className="mono bold" style={{ fontSize: 12, color: r.ok ? "var(--good)" : "var(--crit)", flexShrink: 0 }}>{r.res}</span>
+                  <span className="mono muted" style={{ fontSize: 11, flexShrink: 0 }}>{timeAgo(r.created_at)}</span>
+                </div>
+                <div className="mono muted" style={{ fontSize: 11 }}>{formatTsShort(r.created_at, tz || undefined)}</div>
+                <div className="muted" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.ua}</div>
               </div>
             ))}
           </div>

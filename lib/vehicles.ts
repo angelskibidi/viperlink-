@@ -350,6 +350,62 @@ export async function listVehicleCommands(vehicleId: string) {
   }));
 }
 
+async function resolveVehicleIds(userId: string, vehicleId?: string): Promise<string[] | null> {
+  if (vehicleId) return [vehicleId];
+  const { data } = await supabaseAdmin.from("vehicles").select("id").eq("user_id", userId);
+  const ids = (data ?? []).map((v: { id: string }) => v.id);
+  return ids.length === 0 ? null : ids;
+}
+
+type VRow = { id: string; vehicle_id: string; event_type: string; message: string; created_at: string | null; vehicles: { vehicle_name: string; make: string | null; model: string | null } | null };
+
+function mapVRow(row: VRow) {
+  const v = row.vehicles;
+  return {
+    id: row.id,
+    vehicleId: row.vehicle_id,
+    vehicleName: v?.vehicle_name ?? "Unknown vehicle",
+    vehicleLabel: [v?.make, v?.model].filter(Boolean).join(" ") || v?.vehicle_name || "Unknown",
+    type: row.event_type,
+    message: row.message,
+    created_at: row.created_at ?? new Date().toISOString(),
+  };
+}
+
+async function queryAllVehicleEvents(userId: string, vehicleId: string | undefined, filter: "commands" | "events") {
+  const ids = await resolveVehicleIds(userId, vehicleId);
+  if (!ids) return [];
+
+  let query = supabaseAdmin
+    .from("vehicle_events")
+    .select("id, vehicle_id, event_type, message, created_at, vehicles(vehicle_name, make, model)")
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (filter === "commands") query = query.like("event_type", "COMMAND_%");
+  else query = query.not("event_type", "like", "COMMAND_%");
+
+  if (vehicleId) query = query.eq("vehicle_id", vehicleId);
+  else query = query.in("vehicle_id", ids);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as unknown as VRow[];
+}
+
+export async function listAllCommands(userId: string, vehicleId?: string) {
+  const rows = await queryAllVehicleEvents(userId, vehicleId, "commands");
+  return rows.map((row) => ({
+    ...mapVRow(row),
+    command: row.event_type.replace(/^COMMAND_/, "") || row.message,
+  }));
+}
+
+export async function listAllEvents(userId: string, vehicleId?: string) {
+  const rows = await queryAllVehicleEvents(userId, vehicleId, "events");
+  return rows.map(mapVRow);
+}
+
 export async function clearVehicleEvents(vehicleId: string) {
   const { error } = await supabaseAdmin
     .from("vehicle_events")

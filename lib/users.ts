@@ -9,6 +9,9 @@ export type AppUser = {
   username: string;
   email: string | null;
   name: string;
+  phone: string | null;
+  totp_enabled: boolean;
+  totp_updated_at: string | null;
   role: UserRole;
   created_at: string;
 };
@@ -16,6 +19,9 @@ export type AppUser = {
 type UserRow = AppUser & {
   password_hash: string;
   salt: string;
+  phone: string | null;
+  totp_secret: string | null;
+  totp_enabled: boolean;
 };
 
 function now() {
@@ -43,6 +49,9 @@ function toAppUser(user: UserRow): AppUser {
     username: user.username,
     email: user.email,
     name: user.name,
+    phone: user.phone ?? null,
+    totp_enabled: user.totp_enabled ?? false,
+    totp_updated_at: (user as UserRow & { totp_updated_at?: string | null }).totp_updated_at ?? null,
     role: user.role,
     created_at: user.created_at,
   };
@@ -145,14 +154,42 @@ export async function findUserForLogin(identifier: string): Promise<UserRow | nu
   const { data, error } = await supabaseAdmin
     .from("app_users")
     .select("*")
-    .or(`username.eq.${cleanIdentifier},email.eq.${cleanIdentifier}`)
+    .or(`username.eq.${cleanIdentifier},email.eq.${cleanIdentifier},phone.eq.${cleanIdentifier}`)
     .maybeSingle();
 
   if (error) throw error;
   return (data as UserRow | null) ?? null;
 }
 
-export async function createUser(input: { username: string; email: string; name: string; password: string; role?: UserRole }) {
+export async function getTotpSecret(userId: string): Promise<string | null> {
+  const { data } = await supabaseAdmin.from("app_users").select("totp_secret").eq("id", userId).single();
+  return (data as { totp_secret: string | null } | null)?.totp_secret ?? null;
+}
+
+export async function saveTotpSecret(userId: string, secret: string): Promise<boolean> {
+  const { error } = await supabaseAdmin.from("app_users").update({ totp_secret: secret, totp_enabled: false, updated_at: now() }).eq("id", userId);
+  return !error;
+}
+
+export async function enableTotp(userId: string): Promise<boolean> {
+  const { error } = await supabaseAdmin.from("app_users").update({ totp_enabled: true, totp_updated_at: now(), updated_at: now() }).eq("id", userId);
+  return !error;
+}
+
+export async function disableTotp(userId: string): Promise<boolean> {
+  const { error } = await supabaseAdmin.from("app_users").update({ totp_secret: null, totp_enabled: false, totp_updated_at: now(), updated_at: now() }).eq("id", userId);
+  return !error;
+}
+
+export async function updatePhone(userId: string, phone: string | null): Promise<boolean> {
+  const { error } = await supabaseAdmin
+    .from("app_users")
+    .update({ phone: phone ?? null, updated_at: now() })
+    .eq("id", userId);
+  return !error;
+}
+
+export async function createUser(input: { username: string; email: string; name: string; password: string; phone?: string; role?: UserRole }) {
   await ensureDefaultAdmin();
 
   const username = input.username.trim().toLowerCase();
@@ -173,6 +210,7 @@ export async function createUser(input: { username: string; email: string; name:
       username,
       email,
       name,
+      phone: input.phone?.trim() || null,
       password_hash: hash,
       salt,
       role: input.role ?? "user",
@@ -191,7 +229,7 @@ export async function getUserById(id: string): Promise<AppUser | null> {
 
   const { data, error } = await supabaseAdmin
     .from("app_users")
-    .select("id, auth_user_id, username, email, name, role, created_at")
+    .select("id, auth_user_id, username, email, name, phone, totp_enabled, totp_updated_at, role, created_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -204,7 +242,7 @@ export async function listUsers(): Promise<AppUser[]> {
 
   const { data, error } = await supabaseAdmin
     .from("app_users")
-    .select("id, auth_user_id, username, email, name, role, created_at")
+    .select("id, auth_user_id, username, email, name, phone, totp_enabled, role, created_at")
     .order("created_at", { ascending: true });
 
   if (error) throw error;
@@ -240,6 +278,32 @@ export async function ensureSupabaseAuthForEmail(email: string) {
 
   if (updateError) throw updateError;
   return authUserId;
+}
+
+export async function changePassword(userId: string, currentPassword: string, newPassword: string): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabaseAdmin
+    .from("app_users")
+    .select("password_hash, salt, auth_user_id, email")
+    .eq("id", userId)
+    .single();
+
+  if (error || !data) return { ok: false, error: "User not found." };
+  if (!verifyPassword(currentPassword, data.salt, data.password_hash)) return { ok: false, error: "Current password is incorrect." };
+  if (newPassword.length < 6) return { ok: false, error: "New password must be at least 6 characters." };
+
+  const { hash, salt } = hashPassword(newPassword);
+  const { error: updateError } = await supabaseAdmin
+    .from("app_users")
+    .update({ password_hash: hash, salt, updated_at: now() })
+    .eq("id", userId);
+
+  if (updateError) return { ok: false, error: "Could not update password." };
+
+  if (data.auth_user_id) {
+    await supabaseAdmin.auth.admin.updateUserById(data.auth_user_id, { password: newPassword }).catch(() => {});
+  }
+
+  return { ok: true };
 }
 
 export async function updatePasswordByAuthToken(accessToken: string, password: string) {

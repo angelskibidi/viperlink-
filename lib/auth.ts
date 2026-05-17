@@ -1,11 +1,12 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
 import { findUserForLogin, getUserById, verifyPassword, type AppUser } from "@/lib/users";
+import { createDbSession, sessionExists, deleteSession, touchSession } from "@/lib/sessions";
 
 const COOKIE_NAME = "viperlink_session";
 const SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "development-only-change-me";
 
-type SessionPayload = { userId: string; exp: number };
+type SessionPayload = { userId: string; sessionId?: string; exp: number };
 
 function sign(value: string) {
   return crypto.createHmac("sha256", SECRET).update(value).digest("base64url");
@@ -30,8 +31,20 @@ function decode(token?: string): SessionPayload | null {
   }
 }
 
-export async function createSession(userId: string) {
-  const token = encode({ userId, exp: Date.now() + 1000 * 60 * 60 * 24 * 30 });
+export async function createSession(userId: string, request?: Request) {
+  const ua = request?.headers.get("user-agent") ?? null;
+  const ip = request?.headers.get("x-forwarded-for")?.split(",")[0].trim()
+    ?? request?.headers.get("x-real-ip")
+    ?? null;
+
+  let sessionId: string | undefined;
+  try {
+    sessionId = await createDbSession(userId, ua, ip);
+  } catch {
+    // DB session creation failed — still allow login, just no revocation support
+  }
+
+  const token = encode({ userId, sessionId, exp: Date.now() + 1000 * 60 * 60 * 24 * 30 });
   const cookieStore = await cookies();
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
@@ -44,6 +57,10 @@ export async function createSession(userId: string) {
 
 export async function destroySession() {
   const cookieStore = await cookies();
+  const payload = decode(cookieStore.get(COOKIE_NAME)?.value);
+  if (payload?.sessionId) {
+    await deleteSession(payload.sessionId).catch(() => {});
+  }
   cookieStore.delete(COOKIE_NAME);
 }
 
@@ -51,7 +68,20 @@ export async function getCurrentUser(): Promise<AppUser | null> {
   const cookieStore = await cookies();
   const payload = decode(cookieStore.get(COOKIE_NAME)?.value);
   if (!payload) return null;
+
+  if (payload.sessionId) {
+    const exists = await sessionExists(payload.sessionId).catch(() => true);
+    if (!exists) return null;
+    touchSession(payload.sessionId).catch(() => {});
+  }
+
   return getUserById(payload.userId);
+}
+
+export async function getCurrentSessionId(): Promise<string | null> {
+  const cookieStore = await cookies();
+  const payload = decode(cookieStore.get(COOKIE_NAME)?.value);
+  return payload?.sessionId ?? null;
 }
 
 export async function validateLogin(identifier: string, password: string) {

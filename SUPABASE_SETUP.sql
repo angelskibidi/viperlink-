@@ -28,6 +28,52 @@ alter table public.app_users add column if not exists updated_at timestamp with 
 alter table public.app_users alter column password drop not null;
 alter table public.app_users alter column password_hash drop not null;
 alter table public.app_users alter column salt drop not null;
+alter table public.app_users add column if not exists phone text;
+alter table public.app_users add column if not exists totp_secret text;
+alter table public.app_users add column if not exists totp_enabled boolean default false;
+alter table public.app_users add column if not exists totp_updated_at timestamptz;
+
+-- ============================================================
+-- OTP / VERIFICATION SETUP NOTES
+-- ============================================================
+-- Email OTP: Works out of the box via Supabase Auth.
+--   Make sure "Email OTP" is enabled in:
+--   Supabase Dashboard → Authentication → Providers → Email
+--   Set OTP expiry to 600 seconds (10 minutes) recommended.
+--
+-- Phone (SMS) OTP: Requires Twilio.
+--   Supabase Dashboard → Authentication → Providers → Phone
+--   Enable Phone provider and enter your Twilio credentials:
+--     Account SID, Auth Token, Message Service SID
+--
+-- Redirect URLs: Add these in
+--   Supabase Dashboard → Authentication → URL Configuration:
+--     http://localhost:3000
+--     http://localhost:3000/**
+--     https://your-vercel-app.vercel.app/**
+-- ============================================================
+
+create table if not exists public.login_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.app_users(id) on delete cascade,
+  result text not null,
+  user_agent text,
+  ip text,
+  created_at timestamptz default now()
+);
+
+create index if not exists login_events_user_id_idx on public.login_events(user_id);
+
+create table if not exists public.app_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.app_users(id) on delete cascade,
+  user_agent text,
+  ip text,
+  created_at timestamptz default now(),
+  last_used_at timestamptz default now()
+);
+
+create index if not exists app_sessions_user_id_idx on public.app_sessions(user_id);
 
 create table if not exists vehicles (
   id uuid default gen_random_uuid() primary key,

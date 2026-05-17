@@ -3,6 +3,7 @@
 import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AuthLayout from "@/app/components/AuthLayout";
+import OtpInput from "@/app/components/OtpInput";
 
 function LoginForm() {
   const router = useRouter();
@@ -12,6 +13,8 @@ function LoginForm() {
   const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [step, setStep] = useState<"credentials" | "2fa">("credentials");
+  const [otpCode, setOtpCode] = useState("");
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -24,19 +27,61 @@ function LoginForm() {
       body: JSON.stringify({ username, password }),
     });
     setBusy(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setErr(data.error ?? "Invalid credentials.");
-      return;
-    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setErr(data.error ?? "Invalid credentials."); return; }
+    if (data.totp_required) { setStep("2fa"); setOtpCode(""); return; }
     router.push(searchParams.get("callbackUrl") ?? "/");
     router.refresh();
+  }
+
+  async function submitOtp(code: string) {
+    setErr("");
+    setBusy(true);
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, token: code }),
+    });
+    setBusy(false);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setErr(data.error ?? "Invalid code."); setOtpCode(""); return; }
+    router.push(searchParams.get("callbackUrl") ?? "/");
+    router.refresh();
+  }
+
+  if (step === "2fa") {
+    return (
+      <AuthLayout
+        title="Two-factor authentication"
+        sub="Enter the 6-digit code from your authenticator app."
+      >
+        <div className="col gap-5">
+          <div style={{ textAlign: "center" }}>
+            <span className="ms xl" style={{ color: "var(--brand)", fontSize: 48 }}>phone_iphone</span>
+            <div className="muted" style={{ fontSize: 13, marginTop: 8 }}>Open your authenticator app and enter the code for <strong>ViperLink</strong>.</div>
+          </div>
+
+          <OtpInput length={6} value={otpCode} onChange={setOtpCode} onComplete={submitOtp} autoFocus />
+
+          {err && <div className="field-error" style={{ textAlign: "center" }}>{err}</div>}
+
+          <div className="col gap-2">
+            <button className="btn btn-primary btn-lg btn-block" disabled={busy || otpCode.length < 6} onClick={() => submitOtp(otpCode)}>
+              {busy ? "Verifying…" : <><span>Verify</span> <span className="ms sm">arrow_forward</span></>}
+            </button>
+            <button className="btn btn-ghost btn-block" onClick={() => { setStep("credentials"); setErr(""); setOtpCode(""); }}>
+              ← Back
+            </button>
+          </div>
+        </div>
+      </AuthLayout>
+    );
   }
 
   return (
     <AuthLayout
       title="Sign in"
-      sub="Welcome back. Sign in with your username or email."
+      sub="Welcome back. Sign in with your username."
       footer={
         <div className="row" style={{ justifyContent: "center", gap: 6 }}>
           <span className="muted">No account?</span>
@@ -46,8 +91,8 @@ function LoginForm() {
     >
       <form className="col gap-4" onSubmit={submit}>
         <div className="field">
-          <label className="field-label">Username or Email</label>
-          <input className="input" autoFocus value={username} onChange={(e) => setUsername(e.target.value)} placeholder="username or email" />
+          <label className="field-label">Username</label>
+          <input className="input" autoFocus value={username} onChange={(e) => setUsername(e.target.value)} placeholder="username" />
         </div>
         <div className="field">
           <div className="row between">

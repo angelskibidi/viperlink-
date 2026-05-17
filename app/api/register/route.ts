@@ -8,6 +8,7 @@ export async function POST(request: Request) {
     const name = String(body.name ?? "").trim();
     const email = String(body.email ?? "").trim().toLowerCase();
     const password = String(body.password ?? "");
+    const phone = body.phone ? String(body.phone).trim() : undefined;
 
     if (!username || !name || !email || !password) {
       return NextResponse.json({ error: "Name, username, email, and password are required." }, { status: 400 });
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Password must be at least 6 characters." }, { status: 400 });
     }
 
-    const user = await createUser({ username, name, email, password });
+    const user = await createUser({ username, name, email, password, phone });
     return NextResponse.json({ user });
   } catch (error) {
     console.error("POST /api/register error:", error);

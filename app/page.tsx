@@ -141,12 +141,14 @@ export default function DashboardPage() {
     }
   }, [authStatus, vehiclesLoaded, vehicles.length, router]);
 
-  if (authStatus === "loading" || (authStatus === "ok" && vehiclesLoaded && vehicles.length === 0)) {
+  if (authStatus === "loading" || (authStatus === "ok" && !vehiclesLoaded)) {
     return <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div className="muted mono">Loading ViperLink…</div>
     </div>;
   }
-  if (authStatus === "out" || !v) return null;
+  if (authStatus === "out") return null;
+  if (authStatus === "ok" && vehicles.length === 0) return null;
+  if (!v) return null;
 
   const armed = v.alarm_status === "ARMED";
   const triggered = v.alarm_status === "TRIGGERED";

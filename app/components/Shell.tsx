@@ -9,7 +9,7 @@ import { useToast } from "./Toast";
 const NAV = [
   { to: "/", label: "Dashboard", icon: "dashboard", match: (p: string) => p === "/" },
   { to: "/vehicles", label: "Vehicles", icon: "directions_car", match: (p: string) => p.startsWith("/vehicles") },
-  { to: "/events", label: "Events", icon: "receipt_long", match: (p: string) => p.startsWith("/events") },
+{ to: "/history", label: "History", icon: "history", match: (p: string) => p.startsWith("/history") },
   { to: "/security", label: "Security", icon: "verified_user", match: (p: string) => p.startsWith("/security") },
 ];
 
@@ -27,10 +27,10 @@ function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-brand">
+      <Link href="/" className="sidebar-brand" style={{ textDecoration: "none" }}>
         <div className="sidebar-mark">V</div>
         <div className="sidebar-wordmark">ViperLink</div>
-      </div>
+      </Link>
       {NAV.map((item) => {
         const active = item.match(path ?? "");
         return (
